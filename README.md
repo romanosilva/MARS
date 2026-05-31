@@ -115,6 +115,29 @@ python -m mars.cli prep "Jane"              # meeting prep briefing
 `summary` and `prep` produce an LLM-written narrative when `ANTHROPIC_API_KEY`
 is set, and fall back to a deterministic digest otherwise.
 
+## Daily follow-up digest (hands-off)
+
+`digest` builds the "who you owe replies to" list and can email it to you, so
+you get the nudge without running anything:
+
+```bash
+python -m mars.cli digest                 # print it
+python -m mars.cli digest --email         # send via SMTP
+python -m mars.cli digest --owe-min-hours 12   # ignore very fresh threads
+```
+
+Configure SMTP in `.env` (Gmail uses an **App Password**, not your login
+password — see `.env.example`). Then schedule it with cron — e.g. every weekday
+at 8am, after refreshing the live feed:
+
+```cron
+0 8 * * 1-5  cd /path/to/MARS && /usr/bin/python3 -m mars.cli digest --email >> data/digest.log 2>&1
+```
+
+The scheduled job runs on your machine independently of any chat session, which
+is why it sends mail over SMTP itself rather than through a connector. If SMTP
+isn't configured, `--email` prints the digest and exits non-zero so cron logs it.
+
 ---
 
 ## Layout
@@ -135,8 +158,11 @@ mars/
     heuristics.py        commitments / requests / open questions
     summaries.py         per-person summaries (+ optional LLM)
     meeting_prep.py      briefing (+ optional LLM)
+    digest.py            daily follow-up digest builder
     text.py              keyword extraction
     llm.py               optional Claude layer
+  notify/
+    email_out.py         SMTP sender for the digest
   cli.py                 command line
 tests/                   pytest suite
 ```
@@ -145,7 +171,8 @@ Run tests with `python -m pytest`.
 
 ## Status
 
-Foundation: ingestion (both sources), storage, all four report types, tests.
-Not yet built: group-chat participant modeling, outbound send + auto-logging via
-the Cloud API, and a scheduled "daily follow-up digest". Open to prioritizing
-any of these.
+Foundation: ingestion (exports, decrypted msgstore.db, Cloud API), storage, all
+four report types, the emailed daily digest, and tests.
+Not yet built: richer group-chat participant modeling, outbound send +
+auto-logging via the Cloud API, and contact-name enrichment from `wa.db`. Open
+to prioritizing any of these.

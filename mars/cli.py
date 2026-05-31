@@ -19,7 +19,8 @@ from .config import Config
 from .db import Store
 from .ingest.export_parser import parse_export
 from .ingest.msgstore import parse_msgstore
-from .analysis import analytics, crm, meeting_prep, summaries
+from .analysis import analytics, crm, digest, meeting_prep, summaries
+from .notify import email_out
 
 
 def _store(config: Config) -> Store:
@@ -107,6 +108,24 @@ def cmd_followups(args, config: Config) -> int:
     return 0
 
 
+def cmd_digest(args, config: Config) -> int:
+    store = _store(config)
+    states = crm.thread_states(_per_chat(store), _names(store))
+    subject, body = digest.build(
+        states, owe_min_secs=args.owe_min_hours * 3600)
+    if args.email:
+        try:
+            email_out.send(config, subject, body)
+        except Exception as e:
+            print(f"Email failed: {e}", file=sys.stderr)
+            print("\n--- digest (not sent) ---\n" + body, file=sys.stderr)
+            return 1
+        print(f"Sent digest to {config.smtp_to}: {subject}")
+    else:
+        print(subject + "\n\n" + body)
+    return 0
+
+
 def _resolve(store: Store, needle: str):
     c = store.find_contact(needle)
     if c is None:
@@ -163,6 +182,14 @@ def build_parser() -> argparse.ArgumentParser:
     fu = sub.add_parser("followups", help="who you owe replies to")
     fu.add_argument("--min-age-hours", type=int, default=0)
     fu.set_defaults(func=cmd_followups)
+
+    dg = sub.add_parser("digest",
+                        help="build the daily follow-up digest (optionally email it)")
+    dg.add_argument("--email", action="store_true",
+                    help="send via SMTP instead of printing")
+    dg.add_argument("--owe-min-hours", type=int, default=0,
+                    help="only include replies older than this")
+    dg.set_defaults(func=cmd_digest)
 
     sm = sub.add_parser("summary", help="per-person summary")
     sm.add_argument("contact")
