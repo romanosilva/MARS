@@ -18,6 +18,7 @@ from collections import defaultdict
 from .config import Config
 from .db import Store
 from .ingest.export_parser import parse_export
+from .ingest.msgstore import parse_msgstore
 from .analysis import analytics, crm, meeting_prep, summaries
 
 
@@ -54,6 +55,27 @@ def cmd_import_export(args, config: Config) -> int:
     added = store.add_messages(msgs)
     print(f"Parsed {len(msgs)} messages from {args.file}; stored {added} new "
           f"under chat '{chat_id}' (contact: {display}).")
+    return 0
+
+
+def cmd_import_msgstore(args, config: Config) -> int:
+    parsed = parse_msgstore(args.file)
+    store = _store(config)
+    for chat_id, name in parsed.names.items():
+        if parsed.messages:
+            store.upsert_contact(chat_id, name, 0)
+    # Track first/last seen from the messages themselves.
+    spans: dict[str, list[int]] = {}
+    for m in parsed.messages:
+        spans.setdefault(m.chat_id, [m.ts, m.ts])
+        spans[m.chat_id][0] = min(spans[m.chat_id][0], m.ts)
+        spans[m.chat_id][1] = max(spans[m.chat_id][1], m.ts)
+    for chat_id, (first, last) in spans.items():
+        store.upsert_contact(chat_id, parsed.names.get(chat_id, chat_id), first)
+        store.upsert_contact(chat_id, parsed.names.get(chat_id, chat_id), last)
+    added = store.add_messages(parsed.messages)
+    print(f"Parsed {len(parsed.messages)} messages across "
+          f"{len(parsed.names)} chats from {args.file}; stored {added} new.")
     return 0
 
 
@@ -127,6 +149,11 @@ def build_parser() -> argparse.ArgumentParser:
     ie.add_argument("--system", action="store_true",
                     help="keep system notices")
     ie.set_defaults(func=cmd_import_export)
+
+    ms = sub.add_parser("import-msgstore",
+                        help="ingest a decrypted WhatsApp msgstore.db")
+    ms.add_argument("file")
+    ms.set_defaults(func=cmd_import_msgstore)
 
     sub.add_parser("contacts", help="list known contacts").set_defaults(
         func=cmd_contacts)

@@ -70,6 +70,23 @@ python -m mars.cli import-export jane.txt --owner "Your Name As It Appears" --ch
   lines are stored as outbound.
 - Add `--monthfirst` if your export uses M/D/Y dates.
 
+## Source 1b — decrypted backup (bulk history)
+
+If you'd rather not export each chat by hand, you can import a **decrypted**
+`msgstore.db` in one shot:
+
+```bash
+python -m mars.cli import-msgstore msgstore.db
+```
+
+MARS does **not** decrypt backups and never touches your phone. You produce the
+plain `msgstore.db` yourself from your own device (e.g. with `wa-crypt-tools`,
+which needs the key from WhatsApp's app folder), then point MARS at it. Both the
+legacy (`messages`) and modern (`message`/`chat`/`jid`) schemas are supported.
+1:1 chats are keyed by phone number so they line up with Cloud API contacts;
+group chats are keyed by their full jid. Display names live in a separate
+`wa.db`, so contacts appear as phone numbers until you also have names.
+
 ## Source 2 — Cloud API (live feed)
 
 1. Create a Meta app, add the **WhatsApp** product, register a phone number.
@@ -109,6 +126,7 @@ mars/
   models.py              Message / Contact
   ingest/
     export_parser.py     WhatsApp 'Export Chat' .txt parser
+    msgstore.py          decrypted msgstore.db importer (legacy + modern)
     cloud_api.py         webhook signature + payload parsing
     webhook.py           FastAPI ingest endpoint
   analysis/
