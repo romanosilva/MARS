@@ -10,6 +10,10 @@
 #   TS_AUTHKEY     Tailscale auth key (https://login.tailscale.com/admin/settings/keys).
 #                  If unset, `tailscale up` will print a login link to authenticate manually.
 #   TS_HOSTNAME    Optional hostname to advertise to your tailnet.
+#
+# Works on both systemd machines and init-less containers: if systemd isn't
+# running as PID 1, tailscaled is started directly in the background instead
+# of via `systemctl`.
 
 set -euo pipefail
 
@@ -26,7 +30,38 @@ else
   echo "Tailscale is already installed."
 fi
 
-$SUDO systemctl enable --now tailscaled
+has_systemd() {
+  [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1
+}
+
+start_tailscaled_standalone() {
+  if pgrep -x tailscaled >/dev/null 2>&1; then
+    echo "tailscaled is already running."
+    return
+  fi
+
+  echo "No systemd detected; starting tailscaled directly..."
+  $SUDO mkdir -p /var/lib/tailscale /var/run/tailscale
+  $SUDO nohup tailscaled \
+    --state=/var/lib/tailscale/tailscaled.state \
+    --socket=/var/run/tailscale/tailscaled.sock \
+    >/var/log/tailscaled.log 2>&1 &
+  disown || true
+
+  for _ in $(seq 1 20); do
+    [ -S /var/run/tailscale/tailscaled.sock ] && return
+    sleep 0.5
+  done
+
+  echo "tailscaled did not start; see /var/log/tailscaled.log" >&2
+  exit 1
+}
+
+if has_systemd; then
+  $SUDO systemctl enable --now tailscaled
+else
+  start_tailscaled_standalone
+fi
 
 UP_ARGS=(--ssh)
 if [ -n "${TS_AUTHKEY:-}" ]; then

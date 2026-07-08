@@ -13,9 +13,17 @@ ports.
 ./scripts/install-tailscale-ssh.sh
 ```
 
-This installs the `tailscale` package, starts the `tailscaled` service, and runs
-`tailscale up --ssh`. If no auth key is provided, `tailscale up` prints a login link to
-authenticate the machine interactively.
+This installs the `tailscale` package, starts `tailscaled`, and runs `tailscale up --ssh`.
+If no auth key is provided, `tailscale up` prints a login link to authenticate the machine
+interactively.
+
+On machines with systemd, `tailscaled` is started via `systemctl`. On init-less containers
+(no `systemd` as PID 1), the script starts `tailscaled` directly in the background instead,
+logging to `/var/log/tailscaled.log`.
+
+This script needs outbound network access to `tailscale.com` (and the tailnet coordination
+servers `*.tailscale.com`) to download and authenticate — it won't work in sandboxes whose
+network policy blocks that host.
 
 ### Non-interactive setup
 
